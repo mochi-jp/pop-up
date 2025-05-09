@@ -3,39 +3,65 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>ポップアップ計算機 (iPhone対応)</title>
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <link rel="manifest" href="/manifest.json">
+    <title>シンプルポップアップ計算機</title>
     <style>
         body {
             margin: 0;
-            overflow: hidden; /* スクロール防止 */
+            overflow: hidden;
+            background: #000;
         }
         #calculator {
             position: fixed;
             top: 20px;
             left: 20px;
-            background: #f0f0f0;
+            background: rgba(240, 240, 240, 0.7); /* 初期半透明 */
             border: 1px solid #333;
             padding: 10px;
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
             z-index: 1000;
-            width: 280px; /* iPhoneの画面サイズに最適化 */
+            width: 280px;
             border-radius: 10px;
-            touch-action: none; /* タッチ操作の制御 */
+            touch-action: none;
+            transition: opacity 0.3s, transform 0.3s;
         }
-        #display {
+        #opacity-slider {
             width: 100%;
-            height: 40px;
+            margin: 5px 0;
+        }
+        .input-row {
+            display: flex;
+            gap: 5px;
             margin-bottom: 10px;
-            font-size: 20px;
-            text-align: right;
+        }
+        #sub-input, #main-input {
+            flex: 1;
+            height: 30px;
+            font-size: 16px;
             padding: 5px;
             border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+        .result-windows {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 10px;
+        }
+        .result-window {
+            flex: 1;
+            height: 30px;
             background: #fff;
-            box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            text-align: center;
+            padding: 5px;
+            font-size: 14px;
         }
         .button-grid {
             display: grid;
-            grid-template-columns: repeat(4, 1fr);
+            grid-template-columns: repeat(3, 1fr);
             gap: 5px;
         }
         button {
@@ -47,61 +73,75 @@
             border-radius: 5px;
         }
         button:hover {
-            background: #d0d0d0; /* ホバー効果はタッチでは不要だが一応 */
+            background: #d0d0d0;
         }
-        #drag-handle {
-            background: #ccc;
-            text-align: center;
-            padding: 5px;
+        #close-btn {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            padding: 2px 8px;
             font-size: 12px;
-            cursor: move;
-            border-radius: 5px 5px 0 0;
+        }
+        #history {
+            margin-top: 10px;
+            max-height: 100px;
+            overflow-y: auto;
+            background: rgba(255, 255, 255, 0.8);
+            padding: 5px;
+            border-radius: 5px;
         }
     </style>
 </head>
 <body>
     <div id="calculator">
-        <div id="drag-handle">ドラッグして移動</div>
-        <input type="text" id="display" readonly value="0">
-        <div class="button-grid">
-            <button onclick="clearDisplay()">C</button>
-            <button onclick="appendToDisplay('/')">/</button>
-            <button onclick="appendToDisplay('*')">*</button>
-            <button onclick="deleteLast()">⌫</button>
-            <button onclick="appendToDisplay('7')">7</button>
-            <button onclick="appendToDisplay('8')">8</button>
-            <button onclick="appendToDisplay('9')">9</button>
-            <button onclick="appendToDisplay('-')">-</button>
-            <button onclick="appendToDisplay('4')">4</button>
-            <button onclick="appendToDisplay('5')">5</button>
-            <button onclick="appendToDisplay('6')">6</button>
-            <button onclick="appendToDisplay('+')">+</button>
-            <button onclick="appendToDisplay('1')">1</button>
-            <button onclick="appendToDisplay('2')">2</button>
-            <button onclick="appendToDisplay('3')">3</button>
-            <button onclick="calculate()">=</button>
-            <button onclick="appendToDisplay('0')" style="grid-column: span 2;">0</button>
-            <button onclick="appendToDisplay('.')">.</button>
+        <input type="range" id="opacity-slider" min="0" max="1" step="0.1" value="0.7" oninput="changeOpacity()">
+        <div class="input-row">
+            <input type="number" id="sub-input" placeholder="サブ入力" readonly onclick="clearInput('sub-input')">
+            <input type="number" id="main-input" placeholder="メイン入力" readonly onclick="clearInput('main-input')">
         </div>
+        <div class="result-windows">
+            <div class="result-window" id="result300"></div>
+            <div class="result-window" id="result310"></div>
+            <div class="result-window" id="result320"></div>
+        </div>
+        <div class="button-grid">
+            <button onclick="appendToInput('7')">7</button>
+            <button onclick="appendToInput('8')">8</button>
+            <button onclick="appendToInput('9')">9</button>
+            <button onclick="appendToInput('4')">4</button>
+            <button onclick="appendToInput('5')">5</button>
+            <button onclick="appendToInput('6')">6</button>
+            <button onclick="appendToInput('1')">1</button>
+            <button onclick="appendToInput('2')">2</button>
+            <button onclick="appendToInput('3')">3</button>
+            <button onclick="appendToInput('0')">0</button>
+            <button onclick="calculate()">計算</button>
+        </div>
+        <button id="close-btn" onclick="closeCalculator()">×</button>
+        <div id="history"></div>
     </div>
 
     <script>
-        let display = document.getElementById('display');
         let calculator = document.getElementById('calculator');
+        let subInput = document.getElementById('sub-input');
+        let mainInput = document.getElementById('main-input');
+        let result300 = document.getElementById('result300');
+        let result310 = document.getElementById('result310');
+        let result320 = document.getElementById('result320');
+        let history = document.getElementById('history');
         let isDragging = false;
-        let currentX;
-        let currentY;
-        let xOffset = 0;
-        let yOffset = 0;
+        let currentX, currentY, xOffset = 0, yOffset = 0;
+        let scale = 1;
+        let currentDistance = null;
 
-        // タッチ操作用のドラッグ機能
+        // ドラッグとスワイプ
         calculator.addEventListener('touchstart', (e) => {
-            if (e.target.id === 'drag-handle') {
+            if (e.target.id !== 'close-btn' && e.target.tagName !== 'INPUT') {
                 isDragging = true;
                 let touch = e.touches[0];
                 currentX = touch.clientX - xOffset;
                 currentY = touch.clientY - yOffset;
-                e.preventDefault(); // スクロール防止
+                e.preventDefault();
             }
         });
 
@@ -115,53 +155,115 @@
                 currentX = touch.clientX;
                 currentY = touch.clientY;
                 e.preventDefault();
+            } else if (e.touches.length === 2) {
+                let touch1 = e.touches[0];
+                let touch2 = e.touches[1];
+                let distance = Math.hypot(touch2.clientX - touch1.clientX, touch2.clientY - touch1.clientY);
+                if (!currentDistance) currentDistance = distance;
+                let delta = distance - currentDistance;
+                scale += delta * 0.001;
+                scale = Math.min(Math.max(0.5, scale), 2);
+                calculator.style.transform = `scale(${scale})`;
+                currentDistance = distance;
+                e.preventDefault();
+            } else if (e.touches.length === 1 && !isDragging) {
+                let touch = e.touches[0];
+                let deltaY = touch.clientY - currentY;
+                if (deltaY > 100) closeCalculator();
+                e.preventDefault();
             }
         });
 
         calculator.addEventListener('touchend', () => {
             isDragging = false;
+            currentDistance = null;
+            restrictPosition();
         });
 
-        // 計算機の機能
-        function appendToDisplay(value) {
-            if (display.value === '0' && value !== '.') {
-                display.value = value;
-            } else {
-                display.value += value;
-            }
-        }
+        calculator.addEventListener('touchcancel', () => {
+            isDragging = false;
+            currentDistance = null;
+        });
 
-        function clearDisplay() {
-            display.value = '0';
-        }
-
-        function deleteLast() {
-            display.value = display.value.slice(0, -1) || '0';
-        }
-
-        function calculate() {
-            try {
-                display.value = eval(display.value) || '0';
-            } catch {
-                display.value = 'Error';
-                setTimeout(clearDisplay, 1000);
-            }
-        }
-
-        // 画面外にはみ出さないように制限
+        // 位置制限
         function restrictPosition() {
             let rect = calculator.getBoundingClientRect();
-            let maxX = window.innerWidth - rect.width;
-            let maxY = window.innerHeight - rect.height;
+            let maxX = window.innerWidth - rect.width / scale;
+            let maxY = window.innerHeight - rect.height / scale;
             let x = parseInt(calculator.style.left || '20', 10);
             let y = parseInt(calculator.style.top || '20', 10);
-
             calculator.style.left = Math.max(0, Math.min(x, maxX)) + 'px';
             calculator.style.top = Math.max(0, Math.min(y, maxY)) + 'px';
         }
 
+        // 入力
+        function appendToInput(value) {
+            if (subInput.value === '' || subInput.value === '0') {
+                subInput.value = value;
+            } else if (mainInput.value === '' || mainInput.value === '0') {
+                mainInput.value = value;
+            } else {
+                mainInput.value += value;
+            }
+        }
+
+        function clearInput(id) {
+            document.getElementById(id).value = '';
+            calculate(); // クリア後に再計算
+        }
+
+        // 計算
+        function calculate() {
+            let sub = parseFloat(subInput.value) || 0;
+            let main = parseFloat(mainInput.value) || 0;
+            let result300Val = main / 300;
+            let result310Val = main / 310;
+            let result320Val = main / 320;
+
+            if (sub > 0) {
+                result300Val = main - (sub / 300);
+                result310Val = main - (sub / 310);
+                result320Val = main - (sub / 320);
+            }
+
+            result300.textContent = Math.floor(result300Val);
+            result310.textContent = Math.floor(result310Val);
+            result320.textContent = Math.floor(result320Val);
+
+            let historyEntry = `サブ: ${sub}, メイン: ${main} → 300: ${result300.textContent}, 310: ${result310.textContent}, 320: ${result320.textContent}`;
+            addToHistory(historyEntry);
+        }
+
+        // 履歴
+        function addToHistory(entry) {
+            let div = document.createElement('div');
+            div.textContent = entry;
+            history.appendChild(div);
+            history.scrollTop = history.scrollHeight;
+        }
+
+        // 閉じる
+        function closeCalculator() {
+            calculator.style.display = 'none';
+        }
+
+        // 透明度変更
+        function changeOpacity() {
+            let opacity = document.getElementById('opacity-slider').value;
+            calculator.style.background = `rgba(240, 240, 240, ${opacity})`;
+        }
+
+        // PWA用（仮）
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/service-worker.js')
+                .then(() => console.log('Service Worker registered'))
+                .catch(err => console.log('Service Worker failed:', err));
+        }
+
+        // 初期設定
+        changeOpacity();
+        restrictPosition();
         window.addEventListener('resize', restrictPosition);
-        restrictPosition(); // 初期位置調整
     </script>
 </body>
 </html>
